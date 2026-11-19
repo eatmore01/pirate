@@ -7,8 +7,8 @@ final class FileGridScrollView: NSScrollView {
     weak var gridView: FileGridView?
 
     var dropIndexPathResolver: ((NSPoint) -> IndexPath?)?
-    var dropValidator: ((IndexPath, NSDraggingInfo) -> Bool)?
-    var dropHandler: ((IndexPath, NSDraggingInfo) -> Void)?
+    var dropValidator: ((IndexPath?, NSDraggingInfo) -> Bool)?
+    var dropHandler: ((IndexPath?, NSDraggingInfo) -> Void)?
 
     private var highlightedDropIndexPath: IndexPath?
 
@@ -34,21 +34,23 @@ final class FileGridScrollView: NSScrollView {
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         defer { clearDropHighlight() }
-        guard let indexPath = dropIndexPathResolver?(sender.draggingLocation),
-              dropValidator?(indexPath, sender) == true else {
-            return false
-        }
+        let indexPath = dropIndexPathResolver?(sender.draggingLocation)
+        guard dropValidator?(indexPath, sender) == true else { return false }
         dropHandler?(indexPath, sender)
         return true
     }
 
     private func updateDropTarget(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard let indexPath = dropIndexPathResolver?(sender.draggingLocation),
-              dropValidator?(indexPath, sender) == true else {
+        let indexPath = dropIndexPathResolver?(sender.draggingLocation)
+        guard dropValidator?(indexPath, sender) == true else {
             clearDropHighlight()
             return []
         }
-        setDropHighlight(indexPath)
+        if let indexPath {
+            setDropHighlight(indexPath)
+        } else {
+            clearDropHighlight()
+        }
         return .move
     }
 

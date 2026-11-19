@@ -94,7 +94,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         fatalError("not supported")
     }
 
-    private let upButton = NSButton()
+    private let upButton = SpringLoadedBackButton()
     private let settingsButton = NSButton()
 
     private func setUpTableView() {
@@ -115,6 +115,12 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         upButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
         upButton.target = self
         upButton.action = #selector(didTapUpButton)
+        upButton.registerForDraggedTypes([.fileURL])
+        upButton.canSpring = { [weak self] in
+            guard let self else { return false }
+            return self.currentURL.deletingLastPathComponent().path != self.currentURL.path
+        }
+        upButton.springHandler = { [weak self] in self?.navigateToParent() }
         topBar.addSubview(upButton)
 
         settingsButton.translatesAutoresizingMaskIntoConstraints = false
@@ -425,6 +431,8 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         displayedEntries = sorted
         tableView.reloadData()
         gridView.reloadData()
+        gridLayout.invalidateLayout()
+        gridView.layoutSubtreeIfNeeded()
         if !displayedEntries.isEmpty {
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             gridView.selectionIndexPaths = [IndexPath(item: 0, section: 0)]
@@ -464,48 +472,41 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     private func gridIndexPath(atPoint point: NSPoint) -> IndexPath? {
         guard let layout = gridLayout else { return nil }
 
-        var closest: (indexPath: IndexPath, distance: CGFloat)?
         for item in 0..<displayedEntries.count {
             let indexPath = IndexPath(item: item, section: 0)
             guard let attrs = layout.layoutAttributesForItem(at: indexPath) else { continue }
-            let frame = attrs.frame
-
-            // A generous margin absorbs boundary jitter so hovering anywhere
-            // over a cell (icon, label, or the padding around them) counts.
-            if frame.insetBy(dx: -16, dy: -16).contains(point) {
+            if attrs.frame.contains(point) {
                 return indexPath
             }
-
-            let center = NSPoint(x: frame.midX, y: frame.midY)
-            let distance = hypot(point.x - center.x, point.y - center.y)
-            if closest == nil || distance < closest!.distance {
-                closest = (indexPath, distance)
-            }
-        }
-
-        // Fall back to the nearest item if the point fell in a gap between cells.
-        if let closest, closest.distance < layout.itemSize.width {
-            return closest.indexPath
         }
         return nil
     }
 
-    private func canDropFiles(at indexPath: IndexPath, draggingInfo: NSDraggingInfo) -> Bool {
+    private func canDropFiles(at indexPath: IndexPath?, draggingInfo: NSDraggingInfo) -> Bool {
+        guard let urls = draggingInfo.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+              !urls.isEmpty else {
+            return false
+        }
+        guard let indexPath else {
+            return urls.contains { $0.deletingLastPathComponent().path != currentURL.path }
+        }
         guard indexPath.item < displayedEntries.count else { return false }
         let target = displayedEntries[indexPath.item]
         guard target.isDirectory else { return false }
-        guard let urls = draggingInfo.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
-            return false
-        }
         return !urls.contains(where: { $0.path == target.url.path })
     }
 
-    private func performGridDrop(at indexPath: IndexPath, draggingInfo: NSDraggingInfo) {
-        guard indexPath.item < displayedEntries.count else { return }
-        let target = displayedEntries[indexPath.item]
+    private func performGridDrop(at indexPath: IndexPath?, draggingInfo: NSDraggingInfo) {
         guard let urls = draggingInfo.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
             return
         }
+        guard let indexPath else {
+            moveURLs(urls.filter { $0.deletingLastPathComponent().path != currentURL.path }, toDirectory: currentURL)
+            return
+        }
+        guard indexPath.item < displayedEntries.count else { return }
+        let target = displayedEntries[indexPath.item]
+        guard target.isDirectory else { return }
         moveURLs(urls, toDirectory: target.url)
     }
 
@@ -834,14 +835,19 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         proposedRow row: Int,
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        guard row >= 0, row < displayedEntries.count else { return [] }
-        let target = displayedEntries[row]
-        guard target.isDirectory else { return [] }
-        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+              !urls.isEmpty else {
             return []
         }
-        guard !urls.contains(where: { $0.path == target.url.path }) else { return [] }
-        tableView.setDropRow(row, dropOperation: .on)
+        if row >= 0, row < displayedEntries.count, dropOperation == .on {
+            let target = displayedEntries[row]
+            if target.isDirectory, !urls.contains(where: { $0.path == target.url.path }) {
+                tableView.setDropRow(row, dropOperation: .on)
+                return .move
+            }
+        }
+        guard urls.contains(where: { $0.deletingLastPathComponent().path != currentURL.path }) else { return [] }
+        tableView.setDropRow(-1, dropOperation: .on)
         return .move
     }
 
@@ -851,12 +857,17 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         row: Int,
         dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        guard row < displayedEntries.count else { return false }
-        let target = displayedEntries[row]
         guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
             return false
         }
-        moveURLs(urls, toDirectory: target.url)
+        if row >= 0, row < displayedEntries.count, dropOperation == .on {
+            let target = displayedEntries[row]
+            if target.isDirectory {
+                moveURLs(urls, toDirectory: target.url)
+                return true
+            }
+        }
+        moveURLs(urls.filter { $0.deletingLastPathComponent().path != currentURL.path }, toDirectory: currentURL)
         return true
     }
 
