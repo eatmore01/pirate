@@ -95,7 +95,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private let upButton = SpringLoadedBackButton()
-    private let settingsButton = NSButton()
+    private let settingsButton = TopBarButton()
 
     private func setUpTableView() {
         guard let window else { return }
@@ -462,6 +462,15 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         return gridItem
     }
 
+    func collectionView(
+        _ collectionView: NSCollectionView,
+        draggingSession session: NSDraggingSession,
+        willBeginAt screenPoint: NSPoint,
+        forItemsAt indexPaths: Set<IndexPath>
+    ) {
+        gridView.clearHover()
+    }
+
     func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
         guard indexPath.item < displayedEntries.count else { return nil }
         return displayedEntries[indexPath.item].url as NSURL
@@ -822,6 +831,25 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         }
         sortAscending = descriptor.ascending
         applySortAndReload()
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let identifier = NSUserInterfaceItemIdentifier("hoverRow")
+        if let reused = tableView.makeView(withIdentifier: identifier, owner: self) as? HoverTableRowView {
+            return reused
+        }
+        let rowView = HoverTableRowView()
+        rowView.identifier = identifier
+        return rowView
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        draggingSession session: NSDraggingSession,
+        willBeginAt screenPoint: NSPoint,
+        forRowIndexes rowIndexes: IndexSet
+    ) {
+        self.tableView.clearHover()
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {

@@ -1,6 +1,6 @@
 import AppKit
 
-final class SpringLoadedBackButton: NSButton {
+final class SpringLoadedBackButton: TopBarButton {
     var springDelay: TimeInterval = 1
     var canSpring: (() -> Bool)?
     var springHandler: (() -> Void)?

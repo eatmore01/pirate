@@ -9,8 +9,9 @@ protocol SidebarSelectionHandling: AnyObject {
 private let favoritesGroupTitle = "Favorites"
 private let favoriteColumnID = NSUserInterfaceItemIdentifier("favorite")
 private let baseSidebarIconSize: CGFloat = 20
-private let sidebarIconScaleFactor: CGFloat = 1.3
-private let baseSidebarRowHeight: CGFloat = 30
+private let sidebarIconScaleFactor: CGFloat = 1.6
+private let baseSidebarRowHeight: CGFloat = 38
+private let baseSidebarGroupRowHeight: CGFloat = 26
 
 @MainActor
 final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, SidebarDeleteHandling {
@@ -50,6 +51,8 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         outlineView.outlineTableColumn = column
         outlineView.headerView = nil
         outlineView.style = .sourceList
+        outlineView.indentationPerLevel = 0
+        outlineView.floatsGroupRows = false
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.deleteHandler = self
@@ -58,6 +61,8 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         outlineView.registerForDraggedTypes([.fileURL])
 
         scrollView.documentView = outlineView
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = true
         scrollView.backgroundColor = Theme.surface
@@ -161,6 +166,23 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         (item as? String) == favoritesGroupTitle
     }
 
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        let scale = CGFloat(AppSettings.shared.iconScale)
+        return (item as? String) == favoritesGroupTitle
+            ? baseSidebarGroupRowHeight * scale
+            : baseSidebarRowHeight * scale
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        let identifier = NSUserInterfaceItemIdentifier("sidebarHoverRow")
+        if let reused = outlineView.makeView(withIdentifier: identifier, owner: self) as? HoverTableRowView {
+            return reused
+        }
+        let rowView = HoverTableRowView()
+        rowView.identifier = identifier
+        return rowView
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         if let groupTitle = item as? String {
             let id = NSUserInterfaceItemIdentifier("sidebarGroup")
@@ -177,7 +199,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
                 cell.addSubview(textField)
                 cell.textField = textField
                 NSLayoutConstraint.activate([
-                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
                     textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
                 ])
             }
@@ -205,12 +227,12 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             cell.textField = textField
 
             NSLayoutConstraint.activate([
-                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+                imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
                 imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 imageView.widthAnchor.constraint(equalToConstant: baseSidebarIconSize),
                 imageView.heightAnchor.constraint(equalToConstant: baseSidebarIconSize),
-                textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 6),
-                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 10),
+                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
                 textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
             ])
         }

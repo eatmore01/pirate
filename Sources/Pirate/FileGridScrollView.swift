@@ -13,7 +13,8 @@ final class FileGridScrollView: NSScrollView {
     private var highlightedDropIndexPath: IndexPath?
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        updateDropTarget(sender)
+        gridView?.clearHover()
+        return updateDropTarget(sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {

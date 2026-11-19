@@ -53,11 +53,29 @@ final class GridCollectionViewItem: NSCollectionViewItem {
         self.textField = nameLabel
     }
 
-    override var isSelected: Bool {
+    var isHovered = false {
         didSet {
-            highlightBox.fillColor = isSelected
-                ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.3)
-                : .clear
+            guard oldValue != isHovered else { return }
+            updateHighlightFill()
+        }
+    }
+
+    override var isSelected: Bool {
+        didSet { updateHighlightFill() }
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        isHovered = false
+    }
+
+    private func updateHighlightFill() {
+        if isSelected {
+            highlightBox.fillColor = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.3)
+        } else if isHovered {
+            highlightBox.fillColor = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.1)
+        } else {
+            highlightBox.fillColor = .clear
         }
     }
 

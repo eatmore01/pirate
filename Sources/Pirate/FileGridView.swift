@@ -20,6 +20,55 @@ final class FileGridView: NSCollectionView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    private var hoverTrackingArea: NSTrackingArea?
+    private var hoveredIndexPath: IndexPath?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea {
+            removeTrackingArea(hoverTrackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        setHover(indexPathForItem(at: convert(event.locationInWindow, from: nil)))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        clearHover()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        super.scrollWheel(with: event)
+        guard let window else { return }
+        setHover(indexPathForItem(at: convert(window.mouseLocationOutsideOfEventStream, from: nil)))
+    }
+
+    func clearHover() {
+        setHover(nil)
+    }
+
+    private func setHover(_ indexPath: IndexPath?) {
+        guard hoveredIndexPath != indexPath else { return }
+        if let hoveredIndexPath, let old = item(at: hoveredIndexPath) as? GridCollectionViewItem {
+            old.isHovered = false
+        }
+        hoveredIndexPath = indexPath
+        if let indexPath, let new = item(at: indexPath) as? GridCollectionViewItem {
+            new.isHovered = true
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         super.mouseDown(with: event)
         if event.clickCount == 2 {
