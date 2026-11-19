@@ -193,7 +193,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
             cell = NSTableCellView()
             cell.identifier = favoriteColumnID
 
-            let imageView = NSImageView()
+            let imageView = NonHitTestingImageView()
             imageView.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(imageView)
             cell.imageView = imageView
