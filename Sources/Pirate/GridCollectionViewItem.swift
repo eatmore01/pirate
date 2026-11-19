@@ -4,11 +4,22 @@ final class GridCollectionViewItem: NSCollectionViewItem {
     static let baseIconSize: CGFloat = 64
     static let baseItemSize = NSSize(width: 112, height: 126)
 
-    private let iconView = NSImageView()
+    private let iconView = NonHitTestingImageView()
     private let nameLabel = NSTextField(labelWithString: "")
+    // Plain (non layer-backed) background for selection/drop-target feedback.
+    // Grid drag-and-drop was unreliable right over the icon only when the item
+    // was layer-backed (wantsLayer = true); this avoids Core Animation entirely.
+    private let highlightBox = NSBox()
 
     override func loadView() {
         let container = NSView(frame: NSRect(origin: .zero, size: Self.baseItemSize))
+
+        highlightBox.translatesAutoresizingMaskIntoConstraints = false
+        highlightBox.boxType = .custom
+        highlightBox.borderType = .noBorder
+        highlightBox.fillColor = .clear
+        highlightBox.cornerRadius = 6
+        container.addSubview(highlightBox)
 
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
@@ -22,6 +33,11 @@ final class GridCollectionViewItem: NSCollectionViewItem {
         container.addSubview(nameLabel)
 
         NSLayoutConstraint.activate([
+            highlightBox.topAnchor.constraint(equalTo: container.topAnchor),
+            highlightBox.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            highlightBox.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            highlightBox.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
             iconView.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
             iconView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             iconView.widthAnchor.constraint(equalToConstant: Self.baseIconSize),
@@ -39,16 +55,22 @@ final class GridCollectionViewItem: NSCollectionViewItem {
 
     override var isSelected: Bool {
         didSet {
-            view.layer?.backgroundColor = isSelected
-                ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.3).cgColor
-                : NSColor.clear.cgColor
+            highlightBox.fillColor = isSelected
+                ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.3)
+                : .clear
         }
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 6
+    override var highlightState: NSCollectionViewItem.HighlightState {
+        didSet {
+            if highlightState == .asDropTarget {
+                highlightBox.borderType = .lineBorder
+                highlightBox.borderWidth = 2
+                highlightBox.borderColor = Theme.accent
+            } else {
+                highlightBox.borderType = .noBorder
+            }
+        }
     }
 
     func configure(with entry: DirectoryEntry, iconSize: CGFloat) {

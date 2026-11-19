@@ -23,7 +23,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     private var directoryWatcher: DispatchSourceFileSystemObject?
     private var pendingRescan: DispatchWorkItem?
     private var listScrollView: NSScrollView!
-    private var gridScrollView: NSScrollView!
+    private var gridScrollView: FileGridScrollView!
     private var gridLayout: NSCollectionViewFlowLayout!
     private let gridItemID = NSUserInterfaceItemIdentifier("gridItem")
     private let pathLabel = ClickableLabel(labelWithString: "")
@@ -144,7 +144,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         containerView.addSubview(scrollView)
         self.listScrollView = scrollView
 
-        let gridScrollView = NSScrollView()
+        let gridScrollView = FileGridScrollView()
         gridScrollView.translatesAutoresizingMaskIntoConstraints = false
         gridScrollView.hasVerticalScroller = true
         gridScrollView.drawsBackground = true
@@ -200,12 +200,24 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         gridView.dataSource = self
         gridView.delegate = self
         gridView.isSelectable = true
+        gridView.allowsMultipleSelection = true
         gridView.register(GridCollectionViewItem.self, forItemWithIdentifier: gridItemID)
         gridView.menu = makeContextMenu()
         gridView.doubleClickHandler = { [weak self] in self?.enterSelectedItem() }
         gridView.backgroundColors = [Theme.ground]
+        gridView.setDraggingSourceOperationMask(.move, forLocal: true)
+        gridView.setDraggingSourceOperationMask(.copy, forLocal: false)
 
         gridScrollView.documentView = gridView
+        gridScrollView.gridView = gridView
+        gridScrollView.registerForDraggedTypes([.fileURL])
+        gridScrollView.dropIndexPathResolver = { [weak self] windowPoint in
+            guard let self else { return nil }
+            let point = self.gridView.convert(windowPoint, from: nil)
+            return self.gridIndexPath(atPoint: point)
+        }
+        gridScrollView.dropValidator = { [weak self] indexPath, info in self?.canDropFiles(at: indexPath, draggingInfo: info) ?? false }
+        gridScrollView.dropHandler = { [weak self] indexPath, info in self?.performGridDrop(at: indexPath, draggingInfo: info) }
 
         tableView.navigationHandler = self
         tableView.actionHandler = self
@@ -214,10 +226,13 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         tableView.rowHeight = Self.baseRowHeight * scale
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.backgroundColor = Theme.ground
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.target = self
         tableView.doubleAction = #selector(didDoubleClickRow)
         tableView.menu = makeContextMenu()
+        tableView.registerForDraggedTypes([.fileURL])
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
+        tableView.setDraggingSourceOperationMask(.copy, forLocal: false)
 
         let nameColumn = NSTableColumn(identifier: ColumnID.name)
         nameColumn.title = "Name"
@@ -246,6 +261,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
 
         sidebar.selectionHandler = self
         sidebar.currentDirectoryProvider = { [weak self] in self?.currentURL ?? FileManager.default.homeDirectoryForCurrentUser }
+        sidebar.dropHandler = { [weak self] urls, destination in self?.moveURLs(urls, toDirectory: destination) }
 
         let sidebarContainer = NSView()
         sidebarContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -438,6 +454,75 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         return gridItem
     }
 
+    func collectionView(_ collectionView: NSCollectionView, pasteboardWriterForItemAt indexPath: IndexPath) -> NSPasteboardWriting? {
+        guard indexPath.item < displayedEntries.count else { return nil }
+        return displayedEntries[indexPath.item].url as NSURL
+    }
+
+    // Resolves which grid item (if any) a point - already in gridView's own
+    // coordinate space - falls within, using the flow layout's actual frames.
+    private func gridIndexPath(atPoint point: NSPoint) -> IndexPath? {
+        guard let layout = gridLayout else { return nil }
+
+        var closest: (indexPath: IndexPath, distance: CGFloat)?
+        for item in 0..<displayedEntries.count {
+            let indexPath = IndexPath(item: item, section: 0)
+            guard let attrs = layout.layoutAttributesForItem(at: indexPath) else { continue }
+            let frame = attrs.frame
+
+            // A generous margin absorbs boundary jitter so hovering anywhere
+            // over a cell (icon, label, or the padding around them) counts.
+            if frame.insetBy(dx: -16, dy: -16).contains(point) {
+                return indexPath
+            }
+
+            let center = NSPoint(x: frame.midX, y: frame.midY)
+            let distance = hypot(point.x - center.x, point.y - center.y)
+            if closest == nil || distance < closest!.distance {
+                closest = (indexPath, distance)
+            }
+        }
+
+        // Fall back to the nearest item if the point fell in a gap between cells.
+        if let closest, closest.distance < layout.itemSize.width {
+            return closest.indexPath
+        }
+        return nil
+    }
+
+    private func canDropFiles(at indexPath: IndexPath, draggingInfo: NSDraggingInfo) -> Bool {
+        guard indexPath.item < displayedEntries.count else { return false }
+        let target = displayedEntries[indexPath.item]
+        guard target.isDirectory else { return false }
+        guard let urls = draggingInfo.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return false
+        }
+        return !urls.contains(where: { $0.path == target.url.path })
+    }
+
+    private func performGridDrop(at indexPath: IndexPath, draggingInfo: NSDraggingInfo) {
+        guard indexPath.item < displayedEntries.count else { return }
+        let target = displayedEntries[indexPath.item]
+        guard let urls = draggingInfo.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return
+        }
+        moveURLs(urls, toDirectory: target.url)
+    }
+
+    private func moveURLs(_ urls: [URL], toDirectory destination: URL) {
+        guard !urls.isEmpty else { return }
+        fileUndoManager.beginUndoGrouping()
+        for url in urls {
+            do {
+                try FileOperations.move(url, toDirectory: destination, undoManager: fileUndoManager)
+            } catch {
+                showFileOperationError(error)
+            }
+        }
+        fileUndoManager.endUndoGrouping()
+        reload()
+    }
+
     // MARK: - Navigation
 
     func navigateToParent() {
@@ -498,6 +583,16 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         return displayedEntries[index]
     }
 
+    private func selectedEntries() -> [DirectoryEntry] {
+        let indexes: [Int]
+        if AppSettings.shared.viewMode == .grid {
+            indexes = gridView.selectionIndexPaths.map(\.item)
+        } else {
+            indexes = tableView.selectedRowIndexes.map { $0 }
+        }
+        return indexes.filter { $0 >= 0 && $0 < displayedEntries.count }.map { displayedEntries[$0] }
+    }
+
     private func showFileOperationError(_ error: Error) {
         guard let window else { return }
         let alert = NSAlert(error: error)
@@ -505,13 +600,18 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc func deleteSelectedItem() {
-        guard let entry = selectedEntry() else { return }
-        do {
-            try FileOperations.trash(entry.url, undoManager: fileUndoManager)
-            reload()
-        } catch {
-            showFileOperationError(error)
+        let entries = selectedEntries()
+        guard !entries.isEmpty else { return }
+        fileUndoManager.beginUndoGrouping()
+        for entry in entries {
+            do {
+                try FileOperations.trash(entry.url, undoManager: fileUndoManager)
+            } catch {
+                showFileOperationError(error)
+            }
         }
+        fileUndoManager.endUndoGrouping()
+        reload()
     }
 
     @objc func createNewItem() {
@@ -577,7 +677,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc func renameSelectedItem() {
-        guard let entry = selectedEntry(), let window else { return }
+        guard selectedEntries().count <= 1, let entry = selectedEntry(), let window else { return }
 
         let alert = NSAlert()
         alert.messageText = "Rename \"\(entry.name)\""
@@ -602,40 +702,55 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc func duplicateSelectedItem() {
-        guard let entry = selectedEntry() else { return }
-        do {
-            try FileOperations.copy(entry.url, toDirectory: currentURL, undoManager: fileUndoManager)
-            reload()
-        } catch {
-            showFileOperationError(error)
+        let entries = selectedEntries()
+        guard !entries.isEmpty else { return }
+        fileUndoManager.beginUndoGrouping()
+        for entry in entries {
+            do {
+                try FileOperations.copy(entry.url, toDirectory: currentURL, undoManager: fileUndoManager)
+            } catch {
+                showFileOperationError(error)
+            }
         }
+        fileUndoManager.endUndoGrouping()
+        reload()
     }
 
     @objc func moveSelectedItem() {
-        guard let entry = selectedEntry(), let window else { return }
+        let entries = selectedEntries()
+        guard !entries.isEmpty, let window else { return }
         let panel = destinationPanel()
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url, let self else { return }
-            do {
-                try FileOperations.move(entry.url, toDirectory: destination, undoManager: self.fileUndoManager)
-                self.reload()
-            } catch {
-                self.showFileOperationError(error)
+            self.fileUndoManager.beginUndoGrouping()
+            for entry in entries {
+                do {
+                    try FileOperations.move(entry.url, toDirectory: destination, undoManager: self.fileUndoManager)
+                } catch {
+                    self.showFileOperationError(error)
+                }
             }
+            self.fileUndoManager.endUndoGrouping()
+            self.reload()
         }
     }
 
     @objc func copySelectedItem() {
-        guard let entry = selectedEntry(), let window else { return }
+        let entries = selectedEntries()
+        guard !entries.isEmpty, let window else { return }
         let panel = destinationPanel()
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let destination = panel.url, let self else { return }
-            do {
-                try FileOperations.copy(entry.url, toDirectory: destination, undoManager: self.fileUndoManager)
-                self.reload()
-            } catch {
-                self.showFileOperationError(error)
+            self.fileUndoManager.beginUndoGrouping()
+            for entry in entries {
+                do {
+                    try FileOperations.copy(entry.url, toDirectory: destination, undoManager: self.fileUndoManager)
+                } catch {
+                    self.showFileOperationError(error)
+                }
             }
+            self.fileUndoManager.endUndoGrouping()
+            self.reload()
         }
     }
 
@@ -649,10 +764,11 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc func copySelectedItemToPasteboard() {
-        guard let entry = selectedEntry() else { return }
+        let entries = selectedEntries()
+        guard !entries.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([entry.url as NSURL])
+        pasteboard.writeObjects(entries.map { $0.url as NSURL })
     }
 
     @objc func pasteFromPasteboard() {
@@ -705,6 +821,43 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
         }
         sortAscending = descriptor.ascending
         applySortAndReload()
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard row < displayedEntries.count else { return nil }
+        return displayedEntries[row].url as NSURL
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        validateDrop info: NSDraggingInfo,
+        proposedRow row: Int,
+        proposedDropOperation dropOperation: NSTableView.DropOperation
+    ) -> NSDragOperation {
+        guard row >= 0, row < displayedEntries.count else { return [] }
+        let target = displayedEntries[row]
+        guard target.isDirectory else { return [] }
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return []
+        }
+        guard !urls.contains(where: { $0.path == target.url.path }) else { return [] }
+        tableView.setDropRow(row, dropOperation: .on)
+        return .move
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        acceptDrop info: NSDraggingInfo,
+        row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
+        guard row < displayedEntries.count else { return false }
+        let target = displayedEntries[row]
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] else {
+            return false
+        }
+        moveURLs(urls, toDirectory: target.url)
+        return true
     }
 
     // MARK: - NSTableViewDelegate

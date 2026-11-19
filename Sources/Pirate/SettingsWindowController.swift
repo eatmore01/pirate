@@ -9,6 +9,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let hiddenCheckbox = NSButton(checkboxWithTitle: "Show hidden files", target: nil, action: nil)
     private let viewModeControl = NSSegmentedControl(labels: ["List", "Icons"], trackingMode: .selectOne, target: nil, action: nil)
     private let viewModeLabel = NSTextField(labelWithString: "View:")
+    private let askBeforeQuitCheckbox = NSButton(checkboxWithTitle: "Ask before quitting", target: nil, action: nil)
 
     init() {
         let window = NSWindow(
@@ -32,6 +33,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     @objc private func configDidChange() {
         hiddenCheckbox.state = AppSettings.shared.showHiddenFiles ? .on : .off
         viewModeControl.selectedSegment = AppSettings.shared.viewMode == .grid ? 1 : 0
+        askBeforeQuitCheckbox.state = AppSettings.shared.askBeforeQuit ? .on : .off
         tableView.reloadData()
     }
 
@@ -62,6 +64,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         viewModeControl.target = self
         viewModeControl.action = #selector(didChangeViewMode)
         container.addSubview(viewModeControl)
+
+        askBeforeQuitCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        askBeforeQuitCheckbox.state = AppSettings.shared.askBeforeQuit ? .on : .off
+        askBeforeQuitCheckbox.target = self
+        askBeforeQuitCheckbox.action = #selector(didToggleAskBeforeQuit)
+        container.addSubview(askBeforeQuitCheckbox)
 
         let label = NSTextField(labelWithString: "Open file types with:")
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -105,7 +113,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             viewModeControl.centerYAnchor.constraint(equalTo: viewModeLabel.centerYAnchor),
             viewModeControl.leadingAnchor.constraint(equalTo: viewModeLabel.trailingAnchor, constant: 8),
 
-            label.topAnchor.constraint(equalTo: viewModeLabel.bottomAnchor, constant: 20),
+            askBeforeQuitCheckbox.topAnchor.constraint(equalTo: viewModeLabel.bottomAnchor, constant: 16),
+            askBeforeQuitCheckbox.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+
+            label.topAnchor.constraint(equalTo: askBeforeQuitCheckbox.bottomAnchor, constant: 20),
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
 
             scrollView.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
@@ -128,6 +139,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     @objc private func didChangeViewMode() {
         AppSettings.shared.viewMode = viewModeControl.selectedSegment == 1 ? .grid : .list
+    }
+
+    @objc private func didToggleAskBeforeQuit() {
+        AppSettings.shared.askBeforeQuit = askBeforeQuitCheckbox.state == .on
     }
 
     @objc private func didTapAdd() {

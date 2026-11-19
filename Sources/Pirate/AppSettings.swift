@@ -19,4 +19,9 @@ final class AppSettings {
         get { ConfigStore.shared.config.iconScale }
         set { ConfigStore.shared.update { $0.iconScale = min(2.5, max(0.6, newValue)) } }
     }
+
+    var askBeforeQuit: Bool {
+        get { ConfigStore.shared.config.askBeforeQuit }
+        set { ConfigStore.shared.update { $0.askBeforeQuit = newValue } }
+    }
 }

@@ -9,7 +9,8 @@ protocol SidebarSelectionHandling: AnyObject {
 private let favoritesGroupTitle = "Favorites"
 private let favoriteColumnID = NSUserInterfaceItemIdentifier("favorite")
 private let baseSidebarIconSize: CGFloat = 20
-private let baseSidebarRowHeight: CGFloat = 24
+private let sidebarIconScaleFactor: CGFloat = 1.3
+private let baseSidebarRowHeight: CGFloat = 30
 
 @MainActor
 final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate, SidebarDeleteHandling {
@@ -21,6 +22,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
     private let store = FavoritesStore()
     weak var selectionHandler: SidebarSelectionHandling?
     var currentDirectoryProvider: (() -> URL)?
+    var dropHandler: (([URL], URL) -> Void)?
 
     override init() {
         super.init()
@@ -53,6 +55,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         outlineView.deleteHandler = self
         outlineView.target = self
         outlineView.action = #selector(didClickRow)
+        outlineView.registerForDraggedTypes([.fileURL])
 
         scrollView.documentView = outlineView
         scrollView.hasVerticalScroller = true
@@ -121,6 +124,37 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         (item as? String) == favoritesGroupTitle
     }
 
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        validateDrop info: NSDraggingInfo,
+        proposedItem item: Any?,
+        proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        guard let favorite = item as? FavoriteItem, let targetURL = favorite.resolvedURL() else { return [] }
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+              !urls.isEmpty else {
+            return []
+        }
+        guard !urls.contains(where: { $0.path == targetURL.path }) else { return [] }
+        outlineView.setDropItem(item, dropChildIndex: NSOutlineViewDropOnItemIndex)
+        return .move
+    }
+
+    func outlineView(
+        _ outlineView: NSOutlineView,
+        acceptDrop info: NSDraggingInfo,
+        item: Any?,
+        childIndex index: Int
+    ) -> Bool {
+        guard let favorite = item as? FavoriteItem, let targetURL = favorite.resolvedURL() else { return false }
+        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+              !urls.isEmpty else {
+            return false
+        }
+        dropHandler?(urls, targetURL)
+        return true
+    }
+
     // MARK: - NSOutlineViewDelegate
 
     func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool {
@@ -184,7 +218,7 @@ final class SidebarController: NSObject, NSOutlineViewDataSource, NSOutlineViewD
         cell.textField?.stringValue = favorite.name
         cell.textField?.textColor = Theme.textPrimary
         cell.imageView?.image = NSWorkspace.shared.icon(for: .folder)
-        DirectoryEntryCellFactory.applyIconSize(baseSidebarIconSize * CGFloat(AppSettings.shared.iconScale), to: cell.imageView)
+        DirectoryEntryCellFactory.applyIconSize(baseSidebarIconSize * CGFloat(AppSettings.shared.iconScale) * sidebarIconScaleFactor, to: cell.imageView)
         return cell
     }
 }

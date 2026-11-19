@@ -14,19 +14,28 @@ struct PirateConfig: Codable, Equatable {
     var showHiddenFiles: Bool
     var viewMode: ViewMode
     var iconScale: Double
+    var askBeforeQuit: Bool
     var fileTypeAssociations: [FileTypeAssociationConfig]
 
     enum CodingKeys: String, CodingKey {
         case showHiddenFiles = "show_hidden_files"
         case viewMode = "view_mode"
         case iconScale = "icon_scale"
+        case askBeforeQuit = "ask_before_quit"
         case fileTypeAssociations = "file_type_associations"
     }
 
-    init(showHiddenFiles: Bool, viewMode: ViewMode, iconScale: Double, fileTypeAssociations: [FileTypeAssociationConfig]) {
+    init(
+        showHiddenFiles: Bool,
+        viewMode: ViewMode,
+        iconScale: Double,
+        askBeforeQuit: Bool,
+        fileTypeAssociations: [FileTypeAssociationConfig]
+    ) {
         self.showHiddenFiles = showHiddenFiles
         self.viewMode = viewMode
         self.iconScale = iconScale
+        self.askBeforeQuit = askBeforeQuit
         self.fileTypeAssociations = fileTypeAssociations
     }
 
@@ -37,6 +46,7 @@ struct PirateConfig: Codable, Equatable {
         showHiddenFiles = try container.decodeIfPresent(Bool.self, forKey: .showHiddenFiles) ?? false
         viewMode = try container.decodeIfPresent(ViewMode.self, forKey: .viewMode) ?? .list
         iconScale = try container.decodeIfPresent(Double.self, forKey: .iconScale) ?? 1.0
+        askBeforeQuit = try container.decodeIfPresent(Bool.self, forKey: .askBeforeQuit) ?? true
         fileTypeAssociations = try container.decodeIfPresent([FileTypeAssociationConfig].self, forKey: .fileTypeAssociations) ?? []
     }
 
@@ -44,6 +54,7 @@ struct PirateConfig: Codable, Equatable {
         showHiddenFiles: false,
         viewMode: .list,
         iconScale: 1.0,
+        askBeforeQuit: true,
         fileTypeAssociations: [
             FileTypeAssociationConfig(type: "mp3", app: "VLC"),
             FileTypeAssociationConfig(type: "mp4", app: "VLC"),

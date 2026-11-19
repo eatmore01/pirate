@@ -11,6 +11,7 @@ private let kVK_Return: UInt16 = 0x24
 private let kVK_ANSI_A: UInt16 = 0x00
 private let kVK_ANSI_Equal: UInt16 = 0x18
 private let kVK_ANSI_Minus: UInt16 = 0x1B
+private let kVK_ANSI_D: UInt16 = 0x02
 
 final class FileGridView: NSCollectionView {
     weak var navigationHandler: FileListNavigationHandling?
@@ -59,6 +60,9 @@ final class FileGridView: NSCollectionView {
                 return
             case kVK_ANSI_Minus:
                 actionHandler?.zoomOut()
+                return
+            case kVK_ANSI_D:
+                actionHandler?.deleteSelectedItem()
                 return
             default:
                 break

@@ -12,7 +12,7 @@ enum DirectoryEntryCellFactory {
         let cell = NSTableCellView()
         cell.identifier = identifier
 
-        let imageView = NSImageView()
+        let imageView = NonHitTestingImageView()
         imageView.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(imageView)
         cell.imageView = imageView
