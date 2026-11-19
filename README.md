@@ -7,6 +7,8 @@ Config: `~/.config/pirate/config.yml`
 - cmd + a - create 
 - cmd + r - rename
 
+`app:` accepts a Finder name (`VLC`), a bundle id (`org.videolan.vlc`), or a path to the `.app` (or a binary inside one).
+
 ```yml
 show_hidden_files: false
 view_mode: grid # list

@@ -45,7 +45,7 @@ final class FileListWindowController: NSWindowController, NSTableViewDataSource,
     init(startingAt url: URL) {
         self.currentURL = url
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 1140, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
